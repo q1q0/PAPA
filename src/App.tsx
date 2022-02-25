@@ -1,11 +1,13 @@
 /* eslint-disable react/jsx-no-duplicate-props */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "./App.css";
 // import _ from "lodash";
 // import useAuth from "./hooks/useAuth";
 import { Box, Button } from "@mui/material";
+import Snackbar from '@mui/material/Snackbar';
 import useAuth from "./hooks/useAuth";
 import { ConnectorNames } from "./types";
+import { findWalletAddressOrCreate } from "./utils/api";
 
 enum ClaimState {
   Soon,
@@ -14,9 +16,11 @@ enum ClaimState {
 }
 
 const App: React.FC = () => {
-  const { login, account, logout } = useAuth();
+  const { login, account, logout, error } = useAuth();
   const [claimState, setClaimState] = useState(ClaimState.Soon)
   const [timeLimit, setTimeLimit] = useState(10);
+  const [open, setOpen] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string>();
 
   useEffect(() => {
     if(claimState === ClaimState.Available) return;
@@ -31,8 +35,26 @@ const App: React.FC = () => {
   }, [timeLimit])
 
   useEffect(() => {
-    if(account && claimState === ClaimState.Available)
-      setClaimState(ClaimState.Claimed)
+    setErrorMsg(error?"Please check your connection Network!" : "Connection Successful!")
+  }, [error])
+
+  useMemo(()=>{
+    (async()=>{
+      if(!account) return;
+      const res = await findWalletAddressOrCreate(account)
+      console.log("===========", res);
+      if(res.error) {
+        setErrorMsg(res.error)
+        setOpen(true)
+      }
+      else {
+        if(claimState === ClaimState.Available) {
+          setOpen(true)
+          setErrorMsg(res.data.message)
+          setClaimState(ClaimState.Claimed)
+        }
+      }
+    })()
   }, [account, claimState])
 
   const setNFTText = () => {
@@ -56,19 +78,8 @@ const App: React.FC = () => {
 
   }, [claimState])
 
-  // const onClickBtn = () => {
-  //   switch (claimState) {
-  //     case ClaimState.Soon:
-  //       return 'claim available soon';
-  //     case ClaimState.Available:
-  //       return 'Claim PATA NFT';
-  //     default:
-  //       return 'You have claimed your PATA NFT!'
-  //   }
-  // }
-
   const connectWallet = async() => {
-    if (account) return;
+    // if (account) return;
     await login(ConnectorNames.Injected);
   }
 
@@ -83,6 +94,12 @@ const App: React.FC = () => {
         <Box mt={5} mb={3} color="black"><Button disabled={claimState !== ClaimState.Available} color="inherit" variant="contained" onClick={connectWallet}>{setButtonName()}</Button></Box>
         {account&&<Box>Your wallet address is {account}</Box>}
       </Box>
+      <Snackbar
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        open={open}
+        onClose={()=>{setOpen(false)}}
+        message={errorMsg}
+      />
     </>
   );
 };
