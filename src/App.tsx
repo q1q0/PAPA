@@ -7,7 +7,9 @@ import { Box, Button } from "@mui/material";
 import Snackbar from '@mui/material/Snackbar';
 import useAuth from "./hooks/useAuth";
 import { ConnectorNames } from "./types";
-import { findWalletAddressOrCreate } from "./utils/api";
+import { findWalletAddress } from "./utils/api";
+import Alert from '@mui/material/Alert';
+import AlertTitle from '@mui/material/AlertTitle';
 
 enum ClaimState {
   Soon,
@@ -15,15 +17,22 @@ enum ClaimState {
   Claimed
 }
 
+enum ErrorType {
+  error, warn, success
+}
+
 const App: React.FC = () => {
   const { login, account, logout, error } = useAuth();
   const [claimState, setClaimState] = useState(ClaimState.Soon)
-  const [timeLimit, setTimeLimit] = useState(10);
+  const [timeLimit, setTimeLimit] = useState(3);
   const [open, setOpen] = useState(false)
-  const [errorMsg, setErrorMsg] = useState<string>();
+  const [errorMsg, setErrorMsg] = useState({
+    error: ErrorType.success,
+    content: ''
+  });
 
   useEffect(() => {
-    if(claimState === ClaimState.Available) return;
+    if (claimState === ClaimState.Available) return;
     const timer = setTimeout(() => {
       if (timeLimit - 1 < 0) {
         setClaimState(ClaimState.Available)
@@ -35,27 +44,32 @@ const App: React.FC = () => {
   }, [timeLimit])
 
   useEffect(() => {
-    setErrorMsg(error?"Please check your connection Network!" : "Connection Successful!")
+    setErrorMsg(
+      error ?
+        { content: "Please check your connection Network!", error: ErrorType.error }
+        :
+        { content: "Connected successfully!", error: ErrorType.success }
+    )
   }, [error])
 
-  useMemo(()=>{
-    (async()=>{
-      if(!account) return;
-      const res = await findWalletAddressOrCreate(account)
-      console.log("===========", res);
-      if(res.error) {
-        setErrorMsg(res.error)
+  useEffect(() => {
+    (async () => {
+      console.log("load from api")
+      if (!account) return;
+      const res = await findWalletAddress(account)
+      if (res.error) {
+        setErrorMsg({ content: res.message, error: ErrorType.error })
         setOpen(true)
       }
       else {
-        if(claimState === ClaimState.Available) {
+        if (claimState === ClaimState.Available) {
           setOpen(true)
-          setErrorMsg(res.data.message)
+          setErrorMsg({ content: res.message, error: res.warn ? ErrorType.warn : ErrorType.success })
           setClaimState(ClaimState.Claimed)
         }
       }
     })()
-  }, [account, claimState])
+  }, [account])
 
   const setNFTText = () => {
     switch (claimState) {
@@ -78,7 +92,7 @@ const App: React.FC = () => {
 
   }, [claimState])
 
-  const connectWallet = async() => {
+  const connectWallet = async () => {
     // if (account) return;
     await login(ConnectorNames.Injected);
   }
@@ -92,14 +106,19 @@ const App: React.FC = () => {
         <Box px={5} py={1} my={5} border="solid 1px black">LOGO</Box>
         <Box my={5}>{setNFTText()}</Box>
         <Box mt={5} mb={3} color="black"><Button disabled={claimState !== ClaimState.Available} color="inherit" variant="contained" onClick={connectWallet}>{setButtonName()}</Button></Box>
-        {account&&<Box>Your wallet address is {account}</Box>}
+        {account && <Box>Your wallet address is {account}</Box>}
       </Box>
       <Snackbar
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
         open={open}
-        onClose={()=>{setOpen(false)}}
-        message={errorMsg}
-      />
+        onClose={() => { setOpen(false) }}
+        // message={errorMsg}
+      >
+        <Alert severity={errorMsg.error === ErrorType.error ? "error" : (errorMsg.error === ErrorType.warn ? "warning":"success")}>
+          <AlertTitle>{errorMsg.error === ErrorType.error ? "Error" : (errorMsg.error === ErrorType.warn ? "Warning":"Success")}</AlertTitle>
+          <pre>{errorMsg.content}</pre>
+        </Alert>
+      </Snackbar>
     </>
   );
 };
